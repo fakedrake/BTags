@@ -18,6 +18,9 @@
 ;; You can remove a tag from the current buffer by doing M-x btag-remove-tag-current-buffer
 ;;
 ;; Clear all tags from current buffer with M-x btag-clear-current-buffer-tags
+;;
+;; This is intended to be used to switch the buffer list paradigm according to the directory you are into
+
 
 (defvar btag-connect-list nil
   "An alist of connections between buffers and tags")
@@ -25,13 +28,6 @@
 (defvar btag-buffer-priorities nil
   "An alist with the btags of each buffer")
 
-(defun btag-activate (tag)
-  (interactive "S")
-  (let ((r nil) (b nil))
-  (loop for i in btag-connect-list (if (equal (car i) tag) (cons i t) ((cons i b) (bury-buffer (cdr i))))
-  (setq btag-connect-list (cons t b)))))
-
-;; TODO: if buffer already taged, buble tha tag in priority
 (defun btag-tag-buffer (buffer tag)
   "Associate a tag with the buffer"
   ;; if buffer is not in the buffers encountered by btag add it
@@ -80,11 +76,6 @@
       (loop for i in (reverse (cdr (reverse (split-string (buffer-file-name buf) "/")))) do
 	    (if (not (equal i "")) (btag-tag-buffer buf (intern i))))))
 
-(defadvice ido-find-file (after btag-auto-tag-file ()
-			    activate)
-  (btag-path-to-tag (current-buffer)))
-(ad-activate 'ido-find-file)
-
 ;; Buffers with this tag first have priority
 (defun btag-activate-tag (tag)
   "Push up all buffers using this tag"
@@ -112,3 +103,5 @@
   (setq btag-buffer-priorities nil)
   (setq btag-connect-list nil)
   )
+
+(add-hook 'find-file-hook (lambda () (btag-path-to-tag (current-buffer))))

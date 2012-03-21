@@ -2,7 +2,7 @@
 ;; (intern "name") creates the symbol we want, connect it to
 
 ;; TODO
-;; completion/ido support for tag switching
+;; Tag orgering on switch
 ;;
 ;; Usage:
 ;; When you use ido-find-file the file you open is assigned tags according to its directory
@@ -21,6 +21,7 @@
 ;;
 ;; This is intended to be used to switch the buffer list paradigm according to the directory you are into
 
+(defvar btag-activation-history '())
 
 (defvar btag-connect-list nil
   "An alist of connections between buffers and tags")
@@ -37,17 +38,17 @@
 	(setq btag-connect-list      (cons (cons tag buffer) btag-connect-list))
 	)
 
-    ;; push tag to top and delete it if it is in the buffer's tags
-    (setf (cdr (assoc buffer btag-buffer-priorities)) (cons tag (delete tag (cdr (assoc buffer btag-buffer-priorities)))))
+    (progn
+      ;; push tag to top and delete it if it is in the buffer's tags
+      (setf (cdr (assoc buffer btag-buffer-priorities)) (cons tag (delete tag (cdr (assoc buffer btag-buffer-priorities)))))
 
-    ;; if the tag is new
-    (unless (assoc tag btag-connect-list)
-      (progn
-	(setf (cdr (assoc buffer btag-buffer-priorities)) (cons tag (cdr (assoc buffer btag-buffer-priorities))))
-	(setq btag-connect-list (cons (cons tag buffer) btag-connect-list))
+      ;; if the tag is new
+      (unless (assoc tag btag-connect-list)
+	(progn
+	  (setq btag-connect-list (cons (cons tag buffer) btag-connect-list))
+	  )
 	)
-      )
-    ))
+      )))
 
 (defun btag-remove-tag (buffer tag)
   (setf (cdr (assoc buffer btag-buffer-priorities)) (delete tag (cdr (assoc buffer btag-buffer-priorities))))
@@ -60,8 +61,8 @@
 (defun btag-clear-current-buffer-tags ()
   "Clear all tags from current buffer"
   (interactive)
-  (loop for i in (cdr (assoc (current-buffer) btag-buffer-priorities))
-	(btag-remove-tag (current-buffer) tag)
+  (loop for i in (cdr (assoc (current-buffer) btag-buffer-priorities)) do
+	(btag-remove-tag (current-buffer) i)
 	))
 
 (defun btag-tag-current-buffer (tag)
@@ -69,12 +70,13 @@
   (interactive "SBTag name: ")
   (btag-tag-buffer (current-buffer) tag))
 
-;; advize find file to do this
 (defun btag-path-to-tag (buf)
   "Tag the buf buffer with the names of each of the parent directories"
-  (if (buffer-file-name buf)
+  (if (and (not (cdr (assoc buf btag-buffer-priorities))) (buffer-file-name buf))
       (loop for i in (reverse (cdr (reverse (split-string (buffer-file-name buf) "/")))) do
-	    (if (not (equal i "")) (btag-tag-buffer buf (intern i))))))
+	    (if (not (equal i ""))
+		(btag-tag-buffer buf (intern i))
+	      ))))
 
 ;; Buffers with this tag first have priority
 (defun btag-activate-tag (tag)
@@ -92,7 +94,7 @@
 	  (unless (equal (car (assoc i btag-buffer-priorities)) tag)
 	    (bury-buffer i)))
 
-    (if (tag-found)
+    (if (equal tag-found t)
 	(switch-to-buffer (other-buffer))
       (message "Tag not found"))
     ))
@@ -104,4 +106,40 @@
   (setq btag-connect-list nil)
   )
 
+(defun btag-list-according-to-context ()
+  (delete-dups (mapcar (lambda (x) (symbol-name (car x))) btag-connect-list)))
+
+
+
+(defun ido-btag-activate-tag ()
+  (interactive)
+  (let ((selected (ido-completing-read
+		   "Activate tag: "
+		   (btag-list-according-to-context)
+		   nil t nil 'btag-activation-history nil)))
+    (unless (equal selected nil)
+      ;; (setq btag-activation-history (cons selected btag-activation-history))
+      (btag-activate-tag (intern selected))
+      )
+    ))
+
+(defun btag-show-buffer-tags ()
+  "Output the tags associated with the current buffer"
+  (interactive)
+  (with-output-to-temp-buffer
+      (format "*btags: %s*" (buffer-name (current-buffer)))
+    (princ (format "Tags associated with buffer %s\n\n" (buffer-name (current-buffer))))
+    (loop for i in (cdr (assoc (current-buffer) btag-buffer-priorities)) do
+	  (princ (concat (symbol-name i) "\n")))))
+
 (add-hook 'find-file-hook (lambda () (btag-path-to-tag (current-buffer))))
+(add-hook 'kill-buffer-hook (lambda () (btag-clear-current-buffer-tags)))
+
+(define-minor-mode btags-mode
+  "A minor mode that allows for easy switching between categories of buffers.
+Especially useful when working with more than one project."
+  nil " dtag-mode"
+  '(("\C-xt" . ido-btag-activate-tag))
+  :global t)
+
+(provide 'btags)

@@ -2,7 +2,9 @@
 ;; (intern "name") creates the symbol we want, connect it to
 
 ;; TODO
-;; Tag orgering on switch
+;; Eliminate all errors in current functionality
+;; test Tag orgering on switch
+;;
 ;;
 ;; Usage:
 ;; When you use ido-find-file the file you open is assigned tags according to its directory
@@ -23,7 +25,7 @@
 
 (defvar btag-activation-history '())
 
-(defvar btag-connect-list nil
+(defvar btag-tag-list nil
   "An alist of connections between buffers and tags")
 
 (defvar btag-buffer-priorities nil
@@ -31,28 +33,23 @@
 
 (defun btag-tag-buffer (buffer tag)
   "Associate a tag with the buffer"
-  ;; if buffer is not in the buffers encountered by btag add it
-  (if (not (assoc buffer btag-buffer-priorities))
-      (progn
-	(setq btag-buffer-priorities (cons (cons buffer (cons tag nil)) btag-buffer-priorities))
-	(setq btag-connect-list      (cons (cons tag buffer) btag-connect-list))
-	)
-
-    (progn
-      ;; push tag to top and delete it if it is in the buffer's tags
+  (if (assoc buffer btag-buffer-priorities)
+      ;; push tag to top of buffer's list
       (setf (cdr (assoc buffer btag-buffer-priorities)) (cons tag (delete tag (cdr (assoc buffer btag-buffer-priorities)))))
-
-      ;; if the tag is new
-      (unless (assoc tag btag-connect-list)
-	(progn
-	  (setq btag-connect-list (cons (cons tag buffer) btag-connect-list))
-	  )
-	)
-      )))
+    ;; add buffer to buffers list with tag
+    (setq btag-buffer-priorities (cons (cons buffer tag) btag-buffer-priotities))
+    )
+  (if (assoc tag btag-tag-list)
+      ;; push tag to top of buffer's list
+      (setf (cdr (assoc tag btag-tag-list)) (cons buffer (delete buffer (cdr (assoc tag btag-tag-list)))))
+    ;; add buffer to buffers list with tag
+    (setq btag-tag-list (cons (cons tag buffer) btag-tag-list))
+    ))
 
 (defun btag-remove-tag (buffer tag)
   (setf (cdr (assoc buffer btag-buffer-priorities)) (delete tag (cdr (assoc buffer btag-buffer-priorities))))
-  (setq btag-connect-list (delete (cons tag buffer) btag-connect-list)))
+  (setf (cdr (assoc tag btag-tag-list)) (delete buffer (cdr (assoc tag btag-tag-list))))
+  )
 
 (defun btag-remove-tag-current-buffer (tag)
   (interactive "SBtag to be removed: ")
@@ -103,25 +100,26 @@
 (defun btag-clean-all ()
   (interactive)
   (setq btag-buffer-priorities nil)
-  (setq btag-connect-list nil)
+  (setq btag-tag-list nil)
   )
 
 (defun btag-list-according-to-context ()
-  (delete-dups (mapcar (lambda (x) (symbol-name (car x))) btag-connect-list)))
-
-
+  (let ((tags-list (mapcar (lambda (x) (symbol-name (car x))) btag-tag-list)))
+    (cons (cdr tags-list) (car tags-list))))
 
 (defun ido-btag-activate-tag ()
   (interactive)
-  (let ((selected (ido-completing-read
-		   "Activate tag: "
-		   (btag-list-according-to-context)
-		   nil t nil 'btag-activation-history nil)))
-    (unless (equal selected nil)
-      ;; (setq btag-activation-history (cons selected btag-activation-history))
-      (btag-activate-tag (intern selected))
-      )
-    ))
+  (if (not (equal btag-tag-list nil))
+    (let ((selected (ido-completing-read
+		     "Activate tag: "
+		     (btag-list-according-to-context)
+		     nil t nil 'btag-activation-history nil)))
+      (unless (equal selected "")
+	;; (setq btag-activation-history (cons selected btag-activation-history))
+	(btag-activate-tag (intern selected))
+	(setq btag-tag-list (cons (assoc (intern selected) btag-tag-list) (delete (assoc (intern selected) btag-tag-list) btag-tag-list))) ;; bring tag to top
+	)))
+  (message "No tags available"))
 
 (defun btag-show-buffer-tags ()
   "Output the tags associated with the current buffer"
